@@ -49,13 +49,25 @@ automatically to the Bhubaneswar default, same as the original app.
 This repo builds the APK automatically via
 [`.github/workflows/build-apk.yml`](../.github/workflows/build-apk.yml) on
 every push to `main` and every pull request that touches `shankh_alarm/`.
-To grab a build:
+
+### Straight to your phone (recommended)
+
+**[Download app-release.apk](https://github.com/SarbojitMishra/MobileApps/releases/download/apk-latest/app-release.apk)**
+— open this link in your Android phone's browser and it downloads the APK
+directly (no GitHub login, no zip). Tap the downloaded file to install
+(allow "install from this source" once, since it isn't from the Play
+Store). This link always points at the newest build from `main`; see the
+[apk-latest release](https://github.com/SarbojitMishra/MobileApps/releases/tag/apk-latest)
+page for `app-debug.apk` too.
+
+### From a specific commit/PR build
 
 1. Open the [Actions tab](https://github.com/SarbojitMishra/MobileApps/actions/workflows/build-apk.yml)
    (or the badge above) and pick the run for the commit you want.
 2. Download the `shankh-alarm-apk` artifact — it contains both
    `app-debug.apk` and `app-release.apk` (release is debug-signed for now;
-   see below to add real signing).
+   see below to add real signing). Note: this requires being signed in to
+   GitHub and comes as a `.zip`, unlike the direct link above.
 3. Copy the APK to your phone and install it (allow "install from this
    source" once, since it isn't from the Play Store).
 
