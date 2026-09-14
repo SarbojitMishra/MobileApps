@@ -1,5 +1,7 @@
 # Shankh Alarm (Flutter)
 
+[![Build Shankh Alarm APK](https://github.com/SarbojitMishra/MobileApps/actions/workflows/build-apk.yml/badge.svg)](https://github.com/SarbojitMishra/MobileApps/actions/workflows/build-apk.yml)
+
 A Flutter/Android port of the original native "Shankh Alarm" project — a
 sunrise/sunset conch-shell alarm clock. It:
 
@@ -42,16 +44,37 @@ used Flutter plugin) is used for device location instead of hand-rolling a
 works the same way; devices with no Google Play Services at all fall back
 automatically to the Bhubaneswar default, same as the original app.
 
-## Why you're getting a project, not a built APK
+## Get a built APK from GitHub Actions
 
-This session runs in a cloud sandbox that can reach `storage.googleapis.com`
-(enough to download the Flutter SDK) but **cannot reach `dl.google.com`**
-(egress policy denies it), which is where the Android SDK command-line
-tools and build tools are distributed. Without those, Gradle can't compile
-an APK here — the same limitation the original native project's README
-called out for this environment.
+This repo builds the APK automatically via
+[`.github/workflows/build-apk.yml`](../.github/workflows/build-apk.yml) on
+every push to `main` and every pull request that touches `shankh_alarm/`.
+To grab a build:
 
-Everything else is done and verified in this sandbox:
+1. Open the [Actions tab](https://github.com/SarbojitMishra/MobileApps/actions/workflows/build-apk.yml)
+   (or the badge above) and pick the run for the commit you want.
+2. Download the `shankh-alarm-apk` artifact — it contains both
+   `app-debug.apk` and `app-release.apk` (release is debug-signed for now;
+   see below to add real signing).
+3. Copy the APK to your phone and install it (allow "install from this
+   source" once, since it isn't from the Play Store).
+
+You can also trigger a build on demand from the Actions tab's "Run
+workflow" button (the `workflow_dispatch` trigger).
+
+### Why CI instead of building here
+
+The development sandbox this app was built in runs in a cloud environment
+whose egress policy allows `storage.googleapis.com` (enough to download the
+Flutter SDK) but blocks `dl.google.com` — which is where the Android SDK
+command-line tools **and** Gradle's `google()` Maven repository (needed to
+resolve AGP's own build tooling and AndroidX/Play Services dependencies)
+are served from. That made compiling an APK impossible in that sandbox,
+which is exactly why this workflow exists: GitHub's own runners have normal
+internet access, so the build just works there.
+
+Everything else was verified directly in that sandbox before this workflow
+was added:
 - `flutter pub get` — all dependencies resolve.
 - `flutter analyze` — zero issues.
 - `flutter test` — the smoke test passes.
@@ -59,7 +82,7 @@ Everything else is done and verified in this sandbox:
   foreground — regenerate via `design/make_icon.py` if you want to tweak
   the artwork) are already generated into `android/app/src/main/res/mipmap-*`.
 
-## Build the APK
+## Build the APK locally
 
 1. Install [Android Studio](https://developer.android.com/studio) (which
    bundles the Android SDK) if you haven't already, and make sure
