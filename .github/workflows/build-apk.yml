@@ -1,0 +1,57 @@
+name: Build Shankh Alarm APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shankh_alarm/**"
+      - ".github/workflows/build-apk.yml"
+  pull_request:
+    paths:
+      - "shankh_alarm/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: shankh_alarm
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.4"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Build release APK (debug-signed)
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shankh-alarm-apk
+          path: |
+            shankh_alarm/build/app/outputs/flutter-apk/app-debug.apk
+            shankh_alarm/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
