@@ -43,7 +43,7 @@ class NotificationService {
   /// [fullScreenIntent] (this app), landing the user on the alarm-ringing
   /// screen; otherwise it appears as a heads-up notification with Stop /
   /// Snooze actions.
-  static Future<void> showAlarmNotification({required bool sunrise}) async {
+  static Future<void> showAlarmNotification({required bool sunrise, int? scheduledAtMillis}) async {
     final label = sunrise ? 'Sunrise' : 'Sunset';
     const androidDetails = AndroidNotificationDetails(
       channelAlarmId,
@@ -68,9 +68,23 @@ class NotificationService {
       title: '$label — Shankh Alarm',
       body: 'Tap to view, or Stop to silence.',
       notificationDetails: const NotificationDetails(android: androidDetails),
-      payload: sunrise ? 'sunrise' : 'sunset',
+      payload: scheduledAtMillis == null
+          ? (sunrise ? 'sunrise' : 'sunset')
+          : '${sunrise ? 'sunrise' : 'sunset'}|$scheduledAtMillis',
     );
   }
 
   static Future<void> cancelAlarmNotification() => _plugin.cancel(id: 42);
+
+  /// Payload is `eventType` or `eventType|scheduledAtEpochMillis` — kept as
+  /// a single delimited string since notification payloads must be plain
+  /// text, but callers need the original scheduled instant for history
+  /// logging (Section 22).
+  static (String eventType, int? scheduledAtMillis) decodePayload(String? payload) {
+    if (payload == null || payload.isEmpty) return ('sunrise', null);
+    final parts = payload.split('|');
+    final eventType = parts.first;
+    final scheduledAtMillis = parts.length > 1 ? int.tryParse(parts[1]) : null;
+    return (eventType, scheduledAtMillis);
+  }
 }

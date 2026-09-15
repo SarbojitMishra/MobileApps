@@ -18,6 +18,12 @@ class Prefs {
   static const _keySunriseEnabled = 'sunrise_enabled';
   static const _keySunsetEnabled = 'sunset_enabled';
 
+  // Snooze cap (ALM-FR-010): at most 3 snoozes per event *instance*, reset
+  // the next time that event's base (non-snooze) alarm fires.
+  static const maxSnoozeCount = 3;
+  static const _keySnoozeCountPrefix = 'snooze_count_';
+  static const _keySchedulingWarningPrefix = 'scheduling_warning_';
+
   static Future<double> getLatitude() async =>
       (await SharedPreferences.getInstance()).getDouble(_keyLat) ?? defaultLat;
 
@@ -54,4 +60,28 @@ class Prefs {
 
   static Future<void> setSunsetEnabled(bool value) async =>
       (await SharedPreferences.getInstance()).setBool(_keySunsetEnabled, value);
+
+  static Future<int> getSnoozeCount(String eventType) async =>
+      (await SharedPreferences.getInstance()).getInt('$_keySnoozeCountPrefix$eventType') ?? 0;
+
+  static Future<void> setSnoozeCount(String eventType, int value) async =>
+      (await SharedPreferences.getInstance()).setInt('$_keySnoozeCountPrefix$eventType', value);
+
+  static Future<void> resetSnoozeCount(String eventType) => setSnoozeCount(eventType, 0);
+
+  /// Set when [AndroidAlarmManager] refuses to (re)schedule an event (e.g. a
+  /// `SecurityException` from a revoked exact-alarm permission), surfaced on
+  /// the Home screen rather than failing silently (Design Principle 3).
+  static Future<void> setSchedulingWarning(String eventType, String? message) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_keySchedulingWarningPrefix$eventType';
+    if (message == null) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, message);
+    }
+  }
+
+  static Future<String?> getSchedulingWarning(String eventType) async =>
+      (await SharedPreferences.getInstance()).getString('$_keySchedulingWarningPrefix$eventType');
 }

@@ -21,6 +21,62 @@ sunrise/sunset conch-shell alarm clock. It:
 - Reschedules itself the moment each alarm fires, so a self-sustaining
   chain runs indefinitely without the app needing to stay open.
 
+## v2 changes (against the PRD/SRS/TDS spec)
+
+Implemented in this pass, mapped to the spec's requirement IDs:
+
+- **Snooze cap** (ALM-FR-010): capped at 3 snoozes per alarm instance,
+  shown on the ringing screen ("Snooze 5 min (n/3 used)"); a 4th attempt is
+  refused with an in-app message and the alarm keeps ringing.
+- **Auto-stop, logged** (ALM-FR-011): ringing still auto-stops after 10
+  minutes unattended, now explicitly logged as `auto_stopped` instead of a
+  silent safety cap.
+- **Alarm History** (ALM-FR-012, fixes G3/G5): a local, capped (30-entry)
+  log of every fired/missed/auto-stopped alarm, viewable from Home →
+  "Alarm History". A firing more than 3 minutes late (device was off/killed
+  through the instant) is logged as `missed` instead of ringing at the
+  wrong time.
+- **Manual location override** (ALM-FR-006): Home → "Set location
+  manually" — latitude/longitude entry only (no geocoding — Section 42
+  OQ-02's offline-first-preserving default), with range validation and a
+  "Reset to Bhubaneswar default" action.
+- **Reliability Checklist** (UI-FR-002): consolidates battery-optimization
+  and exact-alarm status (live, where Android exposes it) plus VIVO
+  autostart / lock-in-Recents guidance (undetectable via any public API, so
+  shown as "please verify manually" rather than a false green checkmark)
+  into one screen, replacing v1's README-only guidance.
+- **Test shankh sound** button on Home, so audibility can be checked
+  without waiting for an actual sunrise/sunset.
+- **Fail loud, not silent** (Design Principle 3): a scheduling failure
+  (e.g. a revoked exact-alarm permission) now surfaces as a warning banner
+  on Home instead of the alarm just quietly never firing again.
+- **"No alarms active" state** (ALM-FR-005 edge case): shown explicitly on
+  Home when both Sunrise and Sunset are switched off.
+
+**Why no separate `TimeChangeReceiver`/G2 fix was needed:** the spec's G2
+gap assumes a 365-day table of *pre-computed* UTC instants that can go
+stale after a timezone/time change. This app never caches future instants
+— `SunCalculator` computes the next sunrise/sunset fresh, from lat/lon and
+the current date, every time it schedules an alarm. A UTC sunrise/sunset
+instant is a function of latitude/longitude/date only, not of the device's
+timezone setting, so an already-registered alarm remains astronomically
+correct across a timezone change; the *displayed* next-alarm time
+self-corrects the moment `scheduleAll()` next runs (already true on every
+app resume). A dedicated broadcast receiver would be solving a problem
+this architecture doesn't have.
+
+**Audio (G1) — not resolved in this pass:** v1's `shankh_alarm.ogg` is
+still the placeholder synthesized sound described in the spec's Section
+3.3/13.1 — it must **not** ship in a real release. The spec's recommended
+CC0 source (`freesound.org/people/RoofDog/sounds/78974/`) could not be
+fetched from the sandbox this change was made in (`freesound.org` is
+blocked by the same egress policy documented below for `dl.google.com`).
+To finish Section 13: download that WAV (or another verified-licensed
+source per Section 13.3), loop-edit it per Section 14, and replace both
+`assets/audio/shankh_alarm.ogg` and
+`android/app/src/main/res/raw/shankh_alarm.ogg` before any real-world
+release.
+
 ## Why Flutter instead of a 1:1 Kotlin port
 
 The uploaded project was a native Android/Kotlin app. You asked for a
@@ -134,8 +190,12 @@ lib/
   alarm_scheduler.dart    schedules/reschedules the next sunrise+sunset alarms
   notification_service.dart  full-screen alarm notification (Stop/Snooze actions)
   alarm_port.dart         wakes the live app instantly when an alarm fires
+  alarm_history.dart      local, capped fired/missed/auto-stopped alarm log
   screens/home_screen.dart   settings screen (toggles, permissions, today's times)
-  screens/alarm_screen.dart  full-screen "alarm is ringing" UI
+  screens/alarm_screen.dart  full-screen "alarm is ringing" UI (snooze cap, auto-stop)
+  screens/reliability_checklist_screen.dart  battery/exact-alarm/autostart status
+  screens/location_override_screen.dart      manual lat/lon reference location
+  screens/alarm_history_screen.dart          last 30 fired/missed/auto-stopped events
   main.dart               wiring + cold-start / background-wake routing
 assets/audio/shankh_alarm.ogg          the conch alarm sound (loops in-app)
 android/app/src/main/res/raw/shankh_alarm.ogg   same sound, as the notification's own cue
