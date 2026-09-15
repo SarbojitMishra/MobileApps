@@ -16,6 +16,9 @@ defaults:
   run:
     working-directory: shankh_alarm
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -55,3 +58,49 @@ jobs:
             shankh_alarm/build/app/outputs/flutter-apk/app-debug.apk
             shankh_alarm/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Compute a tag-safe branch slug (for manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "BRANCH_SLUG=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_ENV"
+
+      # Build artifacts (above) require a GitHub login and download as a
+      # .zip, which is awkward on a phone. A Release asset is a plain,
+      # public, single-file URL that a mobile browser can install directly
+      # — so keep a rolling "apk-latest" release pointing at the newest
+      # build from main.
+      - name: Publish latest APK as a GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Shankh Alarm — latest build
+          body: |
+            Automatically built from commit ${{ github.sha }}.
+
+            Download `app-release.apk` on your Android phone and tap it to
+            install (allow "install from this source" once, since it isn't
+            from the Play Store).
+          files: |
+            shankh_alarm/build/app/outputs/flutter-apk/app-debug.apk
+            shankh_alarm/build/app/outputs/flutter-apk/app-release.apk
+
+      # A manual run (Actions tab "Run workflow", or triggered via the API)
+      # on any branch also gets a plain public download link, without ever
+      # touching the "apk-latest" release main owns — published under a tag
+      # derived from the branch name so repeat runs on the same branch just
+      # update the same release instead of piling up.
+      - name: Publish a preview APK as a GitHub Release (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-preview-${{ env.BRANCH_SLUG }}
+          name: "Shankh Alarm — preview build (${{ github.ref_name }})"
+          body: |
+            Manually built from commit ${{ github.sha }} on branch `${{ github.ref_name }}` (not `main`).
+
+            Download `app-release.apk` on your Android phone and tap it to
+            install (allow "install from this source" once, since it isn't
+            from the Play Store).
+          files: |
+            shankh_alarm/build/app/outputs/flutter-apk/app-debug.apk
+            shankh_alarm/build/app/outputs/flutter-apk/app-release.apk
