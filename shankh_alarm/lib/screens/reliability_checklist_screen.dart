@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../notification_service.dart';
 import '../theme.dart';
 
 /// Consolidates the manual mitigations a device's OEM battery/background
@@ -61,6 +62,10 @@ class _ReliabilityChecklistScreenState extends State<ReliabilityChecklistScreen>
   Future<void> _requestBatteryExemption() async {
     await Permission.ignoreBatteryOptimizations.request();
     await _refreshStatus();
+  }
+
+  Future<void> _fixFullScreenIntent() async {
+    await NotificationService.requestFullScreenIntentPermission();
   }
 
   Future<void> _openExactAlarmSettings() async {
@@ -135,6 +140,11 @@ class _ReliabilityChecklistScreenState extends State<ReliabilityChecklistScreen>
             title: 'Exact alarm permission',
             status: _exactAlarmAllowed,
             onFix: _openExactAlarmSettings,
+          ),
+          _ChecklistTile(
+            title: 'Full-screen alarm permission (Android 14+)',
+            status: null,
+            onFix: _fixFullScreenIntent,
           ),
           _ChecklistTile(
             title: 'Autostart permission (VIVO-specific — please verify manually)',

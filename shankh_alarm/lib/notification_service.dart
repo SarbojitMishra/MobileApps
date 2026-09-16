@@ -32,10 +32,27 @@ class NotificationService {
           onDidReceiveBackgroundNotificationResponse,
     );
 
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.requestNotificationsPermission();
+
+    // On Android 14+, USE_FULL_SCREEN_INTENT is granted by default only to
+    // apps the Play Store recognizes as having calling/alarm functionality
+    // — otherwise it can be silently revoked, in which case the alarm
+    // notification never auto-launches AlarmScreen (where the shankh sound
+    // actually plays) when the phone is locked, and the alarm looks like it
+    // "does nothing". This surfaces the OS grant dialog when needed; it's a
+    // no-op if already granted. See Section 26 of the spec.
+    await android?.requestFullScreenIntentPermission();
+  }
+
+  /// Re-checked from the Reliability Checklist screen: same call, exposed
+  /// so it can be triggered from a "Fix this" button too, not just on
+  /// cold start / alarm firing.
+  static Future<bool?> requestFullScreenIntentPermission() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    return android?.requestFullScreenIntentPermission();
   }
 
   /// Shows the full-screen, ongoing "alarm ringing" notification. When the
