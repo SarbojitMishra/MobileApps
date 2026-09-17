@@ -69,6 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download built APK
         uses: actions/download-artifact@v4
         with:
@@ -81,6 +83,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # A single command, not an inline multi-line script: this action runs
+      # each line of a multi-line `script:` block as its own separate shell
+      # invocation, which breaks `if`/`fi` and any other multi-line
+      # construct. The actual test logic lives in emulator-smoke-test.sh so
+      # it runs as one normal shell script.
       - name: Install + launch on a headless emulator, check it doesn't crash
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -89,38 +96,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            set -e
-            adb wait-for-device
-            adb shell wm dismiss-keyguard || true
-
-            adb install -r "$GITHUB_WORKSPACE/apks/app-release.apk"
-
-            # Pre-grant the runtime permissions the app would otherwise
-            # prompt for, so a permission dialog doesn't get mistaken for a
-            # hang, then launch it.
-            adb shell pm grant com.sarbojit.shankhalarm android.permission.ACCESS_FINE_LOCATION || true
-            adb shell pm grant com.sarbojit.shankhalarm android.permission.ACCESS_COARSE_LOCATION || true
-            adb shell pm grant com.sarbojit.shankhalarm android.permission.POST_NOTIFICATIONS || true
-
-            adb shell am start -n com.sarbojit.shankhalarm/.MainActivity
-            sleep 15
-
-            adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
-
-            if ! adb shell pidof com.sarbojit.shankhalarm > /dev/null; then
-              echo "::error::App process is not running 15s after launch — it likely crashed on startup."
-              tail -n 200 "$GITHUB_WORKSPACE/logcat.txt"
-              exit 1
-            fi
-
-            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/logcat.txt"; then
-              echo "::error::FATAL EXCEPTION found in logcat during launch."
-              grep -A 30 "FATAL EXCEPTION" "$GITHUB_WORKSPACE/logcat.txt"
-              exit 1
-            fi
-
-            echo "app-release.apk installed and launched without crashing."
+          script: bash "$GITHUB_WORKSPACE/.github/scripts/emulator-smoke-test.sh"
 
       - name: Upload logcat (always, for debugging)
         if: always()
