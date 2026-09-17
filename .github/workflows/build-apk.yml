@@ -12,16 +12,15 @@ on:
       - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: shankh_alarm
-
 permissions:
   contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shankh_alarm
     steps:
       - uses: actions/checkout@v4
 
@@ -59,15 +58,93 @@ jobs:
             shankh_alarm/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
-      - name: Compute a tag-safe branch slug (for manual runs)
-        if: github.event_name == 'workflow_dispatch'
-        run: echo "BRANCH_SLUG=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_ENV"
+  # Catches what `flutter analyze`/`flutter test` structurally cannot: does
+  # the built APK actually install and launch without crashing on a real
+  # Android runtime? Boots a headless emulator on the runner itself, sideloads
+  # app-release.apk, and fails the run if the process dies or logcat shows a
+  # fatal exception within the first few seconds — the same class of failure
+  # ("installs fine, does nothing / crashes") reported from real testing.
+  emulator-smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: shankh-alarm-apk
+          path: apks
 
-      # Build artifacts (above) require a GitHub login and download as a
-      # .zip, which is awkward on a phone. A Release asset is a plain,
-      # public, single-file URL that a mobile browser can install directly
-      # — so keep a rolling "apk-latest" release pointing at the newest
-      # build from main.
+      - name: Enable KVM group perms (hardware-accelerated emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install + launch on a headless emulator, check it doesn't crash
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -e
+            adb wait-for-device
+            adb shell wm dismiss-keyguard || true
+
+            adb install -r "$GITHUB_WORKSPACE/apks/app-release.apk"
+
+            # Pre-grant the runtime permissions the app would otherwise
+            # prompt for, so a permission dialog doesn't get mistaken for a
+            # hang, then launch it.
+            adb shell pm grant com.sarbojit.shankhalarm android.permission.ACCESS_FINE_LOCATION || true
+            adb shell pm grant com.sarbojit.shankhalarm android.permission.ACCESS_COARSE_LOCATION || true
+            adb shell pm grant com.sarbojit.shankhalarm android.permission.POST_NOTIFICATIONS || true
+
+            adb shell am start -n com.sarbojit.shankhalarm/.MainActivity
+            sleep 15
+
+            adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
+
+            if ! adb shell pidof com.sarbojit.shankhalarm > /dev/null; then
+              echo "::error::App process is not running 15s after launch — it likely crashed on startup."
+              tail -n 200 "$GITHUB_WORKSPACE/logcat.txt"
+              exit 1
+            fi
+
+            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/logcat.txt"; then
+              echo "::error::FATAL EXCEPTION found in logcat during launch."
+              grep -A 30 "FATAL EXCEPTION" "$GITHUB_WORKSPACE/logcat.txt"
+              exit 1
+            fi
+
+            echo "app-release.apk installed and launched without crashing."
+
+      - name: Upload logcat (always, for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-smoke-test-logcat
+          path: logcat.txt
+          if-no-files-found: ignore
+
+  # Build artifacts (above) require a GitHub login and download as a .zip,
+  # which is awkward on a phone. A Release asset is a plain, public,
+  # single-file URL a mobile browser can install directly — and gating this
+  # on emulator-smoke-test means a build that crashes on launch never
+  # replaces a working download link.
+  publish:
+    needs: [build, emulator-smoke-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v4
+        with:
+          name: shankh-alarm-apk
+          path: shankh_alarm/build/app/outputs/flutter-apk
+
       - name: Publish latest APK as a GitHub Release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -76,6 +153,7 @@ jobs:
           name: Shankh Alarm — latest build
           body: |
             Automatically built from commit ${{ github.sha }}.
+            Passed the emulator install/launch smoke test.
 
             Download `app-release.apk` on your Android phone and tap it to
             install (allow "install from this source" once, since it isn't
@@ -89,6 +167,10 @@ jobs:
       # touching the "apk-latest" release main owns — published under a tag
       # derived from the branch name so repeat runs on the same branch just
       # update the same release instead of piling up.
+      - name: Compute a tag-safe branch slug (for manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "BRANCH_SLUG=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_ENV"
+
       - name: Publish a preview APK as a GitHub Release (manual runs only)
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
@@ -97,6 +179,7 @@ jobs:
           name: "Shankh Alarm — preview build (${{ github.ref_name }})"
           body: |
             Manually built from commit ${{ github.sha }} on branch `${{ github.ref_name }}` (not `main`).
+            Passed the emulator install/launch smoke test.
 
             Download `app-release.apk` on your Android phone and tap it to
             install (allow "install from this source" once, since it isn't
